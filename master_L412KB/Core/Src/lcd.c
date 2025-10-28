@@ -1,0 +1,529 @@
+#include "lcd.h"
+#include "main.h" // For HAL_SPI_Transmit, HAL_Delay, HAL_GPIO_WritePin etc.
+#include <string.h>
+
+// SPI 핸들은 main.c에 선언되어있는 것을 사용합니다.
+// master.c 프로젝트에 SPI_HandleTypeDef hspi1; 변수가 있는지 확인해주세요.
+// 만약 hspi2 등 다른 변수를 사용한다면 이 부분을 수정해야 합니다.
+extern SPI_HandleTypeDef hspi1;
+
+/* Private define ------------------------------------------------------------*/
+// ST7735S Commands
+#define ST7735_NOP     0x00
+#define ST7735_SWRESET 0x01
+#define ST7735_RDDID   0x04
+#define ST7735_RDDST   0x09
+#define ST7735_SLPIN   0x10
+#define ST7735_SLPOUT  0x11
+#define ST7735_PTLON   0x12
+#define ST7735_NORON   0x13
+#define ST7735_INVOFF  0x20
+#define ST7735_INVON   0x21
+#define ST7735_DISPOFF 0x28
+#define ST7735_DISPON  0x29
+#define ST7735_CASET   0x2A
+#define ST7735_RASET   0x2B
+#define ST7735_RAMWR   0x2C
+#define ST7735_RAMRD   0x2E
+#define ST7735_PTLAR   0x30
+#define ST7735_COLMOD  0x3A
+#define ST7735_MADCTL  0x36
+#define ST7735_FRMCTR1 0xB1
+#define ST7735_FRMCTR2 0xB2
+#define ST7735_FRMCTR3 0xB3
+#define ST7735_INVCTR  0xB4
+#define ST7735_DISSET5 0xB6
+#define ST7735_PWCTR1  0xC0
+#define ST7735_PWCTR2  0xC1
+#define ST7735_PWCTR3  0xC2
+#define ST7735_PWCTR4  0xC3
+#define ST7735_PWCTR5  0xC4
+#define ST7735_VMCTR1  0xC5
+#define ST7735_RDID1   0xDA
+#define ST7735_RDID2   0xDB
+#define ST7735_RDID3   0xDC
+#define ST7735_RDID4   0xDD
+#define ST7735_GMCTRP1 0xE0
+#define ST7735_GMCTRN1 0xE1
+
+/* Private macro -------------------------------------------------------------*/
+// Pin control macros - 이 핀들은 master.c 프로젝트의 설정과 일치해야 합니다.
+#define LCD_CS_LOW()   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET)
+#define LCD_CS_HIGH()  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_SET)
+#define LCD_DC_LOW()   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET)
+#define LCD_DC_HIGH()  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET)
+#define LCD_RES_LOW()  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET)
+#define LCD_RES_HIGH() HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_SET)
+
+/* Private variables ---------------------------------------------------------*/
+static const uint8_t font8x8[][8] = { { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00 }, // ' ' (Space)
+		{ 0x18, 0x3C, 0x3C, 0x18, 0x18, 0x00, 0x18, 0x00 }, // '!'
+		{ 0x36, 0x36, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, // '"'
+		{ 0x36, 0x36, 0x7F, 0x36, 0x7F, 0x36, 0x36, 0x00 }, // '#'
+		{ 0x0C, 0x3E, 0x03, 0x1E, 0x30, 0x1F, 0x0C, 0x00 }, // '$'
+		{ 0x00, 0x63, 0x33, 0x18, 0x0C, 0x66, 0x63, 0x00 }, // '%'
+		{ 0x1C, 0x36, 0x1C, 0x6E, 0x3B, 0x33, 0x6E, 0x00 }, // '&'
+		{ 0x06, 0x06, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00 }, // '''
+		{ 0x18, 0x0C, 0x06, 0x06, 0x06, 0x0C, 0x18, 0x00 }, // '('
+		{ 0x06, 0x0C, 0x18, 0x18, 0x18, 0x0C, 0x06, 0x00 }, // ')'
+		{ 0x00, 0x66, 0x3C, 0xFF, 0x3C, 0x66, 0x00, 0x00 }, // '*'
+		{ 0x00, 0x0C, 0x0C, 0x3F, 0x0C, 0x0C, 0x00, 0x00 }, // '+'
+		{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x06, 0x00 }, // ','
+		{ 0x00, 0x00, 0x00, 0x3F, 0x00, 0x00, 0x00, 0x00 }, // '-'
+		{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C, 0x00 }, // '.'
+		{ 0x60, 0x30, 0x18, 0x0C, 0x06, 0x03, 0x01, 0x00 }, // '/'
+		{ 0x3E, 0x63, 0x73, 0x7B, 0x6F, 0x67, 0x3E, 0x00 }, // '0'
+		{ 0x0C, 0x0E, 0x0C, 0x0C, 0x0C, 0x0C, 0x3F, 0x00 }, // '1'
+		{ 0x1E, 0x33, 0x30, 0x1C, 0x06, 0x33, 0x3F, 0x00 }, // '2'
+		{ 0x1E, 0x33, 0x30, 0x1C, 0x30, 0x33, 0x1E, 0x00 }, // '3'
+		{ 0x38, 0x3C, 0x36, 0x33, 0x7F, 0x30, 0x78, 0x00 }, // '4'
+		{ 0x3F, 0x03, 0x1F, 0x30, 0x30, 0x33, 0x1E, 0x00 }, // '5'
+		{ 0x1C, 0x06, 0x03, 0x1F, 0x33, 0x33, 0x1E, 0x00 }, // '6'
+		{ 0x3F, 0x33, 0x30, 0x18, 0x0C, 0x0C, 0x0C, 0x00 }, // '7'
+		{ 0x1E, 0x33, 0x33, 0x1E, 0x33, 0x33, 0x1E, 0x00 }, // '8'
+		{ 0x1E, 0x33, 0x33, 0x3E, 0x30, 0x18, 0x0E, 0x00 }, // '9'
+		{ 0x00, 0x0C, 0x0C, 0x00, 0x00, 0x0C, 0x0C, 0x00 }, // ':'
+		{ 0x00, 0x0C, 0x0C, 0x00, 0x00, 0x0C, 0x06, 0x00 }, // ';'
+		{ 0x18, 0x0C, 0x06, 0x03, 0x06, 0x0C, 0x18, 0x00 }, // '<'
+		{ 0x00, 0x00, 0x3F, 0x00, 0x00, 0x3F, 0x00, 0x00 }, // '='
+		{ 0x06, 0x0C, 0x18, 0x30, 0x18, 0x0C, 0x06, 0x00 }, // '>'
+		{ 0x1E, 0x33, 0x30, 0x18, 0x0C, 0x00, 0x0C, 0x00 }, // '?'
+		{ 0x3E, 0x63, 0x7B, 0x7B, 0x7B, 0x03, 0x1E, 0x00 }, // '@'
+		{ 0x0C, 0x1E, 0x33, 0x33, 0x3F, 0x33, 0x33, 0x00 }, // 'A'
+		{ 0x3F, 0x66, 0x66, 0x3E, 0x66, 0x66, 0x3F, 0x00 }, // 'B'
+		{ 0x3C, 0x66, 0x03, 0x03, 0x03, 0x66, 0x3C, 0x00 }, // 'C'
+		{ 0x1F, 0x36, 0x66, 0x66, 0x66, 0x36, 0x1F, 0x00 }, // 'D'
+		{ 0x7F, 0x46, 0x16, 0x1E, 0x16, 0x46, 0x7F, 0x00 }, // 'E'
+		{ 0x7F, 0x46, 0x16, 0x1E, 0x16, 0x06, 0x0F, 0x00 }, // 'F'
+		{ 0x3C, 0x66, 0x03, 0x03, 0x73, 0x66, 0x7C, 0x00 }, // 'G'
+		{ 0x33, 0x33, 0x33, 0x3F, 0x33, 0x33, 0x33, 0x00 }, // 'H'
+		{ 0x1E, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x1E, 0x00 }, // 'I'
+		{ 0x78, 0x30, 0x30, 0x30, 0x33, 0x33, 0x1E, 0x00 }, // 'J'
+		{ 0x67, 0x66, 0x36, 0x1E, 0x36, 0x66, 0x67, 0x00 }, // 'K'
+		{ 0x0F, 0x06, 0x06, 0x06, 0x46, 0x66, 0x7F, 0x00 }, // 'L'
+		{ 0x63, 0x77, 0x7F, 0x7F, 0x6B, 0x63, 0x63, 0x00 }, // 'M'
+		{ 0x63, 0x67, 0x6F, 0x7B, 0x73, 0x63, 0x63, 0x00 }, // 'N'
+		{ 0x1C, 0x36, 0x63, 0x63, 0x63, 0x36, 0x1C, 0x00 }, // 'O'
+		{ 0x3F, 0x66, 0x66, 0x3E, 0x06, 0x06, 0x0F, 0x00 }, // 'P'
+		{ 0x1E, 0x33, 0x33, 0x33, 0x3B, 0x1E, 0x38, 0x00 }, // 'Q'
+		{ 0x3F, 0x66, 0x66, 0x3E, 0x36, 0x66, 0x67, 0x00 }, // 'R'
+		{ 0x1E, 0x33, 0x07, 0x0E, 0x38, 0x33, 0x1E, 0x00 }, // 'S'
+		{ 0x3F, 0x2D, 0x0C, 0x0C, 0x0C, 0x0C, 0x1E, 0x00 }, // 'T'
+		{ 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x3F, 0x00 }, // 'U'
+		{ 0x33, 0x33, 0x33, 0x33, 0x33, 0x1E, 0x0C, 0x00 }, // 'V'
+		{ 0x63, 0x63, 0x63, 0x6B, 0x7F, 0x77, 0x63, 0x00 }, // 'W'
+		{ 0x63, 0x63, 0x36, 0x1C, 0x1C, 0x36, 0x63, 0x00 }, // 'X'
+		{ 0x33, 0x33, 0x33, 0x1E, 0x0C, 0x0C, 0x1E, 0x00 }, // 'Y'
+		{ 0x7F, 0x63, 0x31, 0x18, 0x4C, 0x66, 0x7F, 0x00 }, // 'Z'
+		{ 0x1E, 0x06, 0x06, 0x06, 0x06, 0x06, 0x1E, 0x00 }, // '['
+		{ 0x03, 0x06, 0x0C, 0x18, 0x30, 0x60, 0x40, 0x00 }, // '\'
+		{ 0x1E, 0x18, 0x18, 0x18, 0x18, 0x18, 0x1E, 0x00 }, // ']'
+		{ 0x08, 0x1C, 0x36, 0x63, 0x00, 0x00, 0x00, 0x00 }, // '^'
+		{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF }, // '_'
+		{ 0x0C, 0x0C, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00 }, // '`'
+		{ 0x00, 0x00, 0x1E, 0x30, 0x3E, 0x33, 0x6E, 0x00 }, // 'a'
+		{ 0x07, 0x06, 0x06, 0x3E, 0x66, 0x66, 0x3B, 0x00 }, // 'b'
+		{ 0x00, 0x00, 0x1E, 0x33, 0x03, 0x33, 0x1E, 0x00 }, // 'c'
+		{ 0x38, 0x30, 0x30, 0x3e, 0x33, 0x33, 0x6E, 0x00 }, // 'd'
+		{ 0x00, 0x00, 0x1E, 0x33, 0x3f, 0x03, 0x1E, 0x00 }, // 'e'
+		{ 0x1C, 0x36, 0x06, 0x0f, 0x06, 0x06, 0x0F, 0x00 }, // 'f'
+		{ 0x00, 0x00, 0x6E, 0x33, 0x33, 0x3E, 0x30, 0x1F }, // 'g'
+		{ 0x07, 0x06, 0x36, 0x6E, 0x66, 0x66, 0x67, 0x00 }, // 'h'
+		{ 0x0C, 0x00, 0x0E, 0x0C, 0x0C, 0x0C, 0x1E, 0x00 }, // 'i'
+		{ 0x30, 0x00, 0x30, 0x30, 0x30, 0x33, 0x33, 0x1E }, // 'j'
+		{ 0x07, 0x06, 0x66, 0x36, 0x1E, 0x36, 0x67, 0x00 }, // 'k'
+		{ 0x0E, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x1E, 0x00 }, // 'l'
+		{ 0x00, 0x00, 0x33, 0x7F, 0x7F, 0x6B, 0x63, 0x00 }, // 'm'
+		{ 0x00, 0x00, 0x1F, 0x33, 0x33, 0x33, 0x33, 0x00 }, // 'n'
+		{ 0x00, 0x00, 0x1E, 0x33, 0x33, 0x33, 0x1E, 0x00 }, // 'o'
+		{ 0x00, 0x00, 0x3B, 0x66, 0x66, 0x3E, 0x06, 0x0F }, // 'p'
+		{ 0x00, 0x00, 0x6E, 0x33, 0x33, 0x3E, 0x30, 0x78 }, // 'q'
+		{ 0x00, 0x00, 0x3B, 0x6E, 0x66, 0x06, 0x0F, 0x00 }, // 'r'
+		{ 0x00, 0x00, 0x3E, 0x03, 0x1E, 0x30, 0x1F, 0x00 }, // 's'
+		{ 0x08, 0x0C, 0x3E, 0x0C, 0x0C, 0x2C, 0x18, 0x00 }, // 't'
+		{ 0x00, 0x00, 0x33, 0x33, 0x33, 0x33, 0x6E, 0x00 }, // 'u'
+		{ 0x00, 0x00, 0x33, 0x33, 0x33, 0x1E, 0x0C, 0x00 }, // 'v'
+		{ 0x00, 0x00, 0x63, 0x6B, 0x7F, 0x7F, 0x36, 0x00 }, // 'w'
+		{ 0x00, 0x00, 0x63, 0x36, 0x1C, 0x36, 0x63, 0x00 }, // 'x'
+		{ 0x00, 0x00, 0x33, 0x33, 0x33, 0x3E, 0x30, 0x1F }, // 'y'
+		{ 0x00, 0x00, 0x3F, 0x19, 0x0C, 0x26, 0x3F, 0x00 }, // 'z'
+		{ 0x38, 0x0C, 0x0C, 0x07, 0x0C, 0x0C, 0x38, 0x00 }, // '{'
+		{ 0x18, 0x18, 0x18, 0x00, 0x18, 0x18, 0x18, 0x00 }, // '|'
+		{ 0x07, 0x0C, 0x0C, 0x38, 0x0C, 0x0C, 0x07, 0x00 }, // '}'
+//		{ 0x6E, 0x3B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, // '~'
+		};
+
+/* Private function prototypes -----------------------------------------------*/
+static void LCD_WriteCommand(uint8_t cmd);
+static void LCD_WriteData(uint8_t data);
+static void LCD_WriteData16(uint16_t data);
+static void LCD_SetWindow(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1);
+
+/* Function implementations --------------------------------------------------*/
+
+static void LCD_WriteCommand(uint8_t cmd) {
+    LCD_CS_LOW();
+    LCD_DC_LOW();
+    HAL_SPI_Transmit(&hspi1, &cmd, 1, HAL_MAX_DELAY);
+    LCD_CS_HIGH();
+}
+
+static void LCD_WriteData(uint8_t data) {
+    LCD_CS_LOW();
+    LCD_DC_HIGH();
+    HAL_SPI_Transmit(&hspi1, &data, 1, HAL_MAX_DELAY);
+    LCD_CS_HIGH();
+}
+
+static void LCD_WriteData16(uint16_t data) {
+    uint8_t buffer[2];
+    buffer[0] = (data >> 8) & 0xFF;
+    buffer[1] = data & 0xFF;
+
+    LCD_CS_LOW();
+    LCD_DC_HIGH();
+    HAL_SPI_Transmit(&hspi1, buffer, 2, HAL_MAX_DELAY);
+    LCD_CS_HIGH();
+}
+
+void LCD_Init(void) {
+	// Hardware reset
+	LCD_RES_LOW();
+	HAL_Delay(100);
+	LCD_RES_HIGH();
+	HAL_Delay(100);
+
+	// Software reset
+	LCD_WriteCommand(ST7735_SWRESET);
+	HAL_Delay(150);
+
+	// Out of sleep mode
+	LCD_WriteCommand(ST7735_SLPOUT);
+	HAL_Delay(500);
+
+	// Frame rate control - normal mode
+	LCD_WriteCommand(ST7735_FRMCTR1);
+	LCD_WriteData(0x01);
+	LCD_WriteData(0x2C);
+	LCD_WriteData(0x2D);
+
+	// Frame rate control - idle mode
+	LCD_WriteCommand(ST7735_FRMCTR2);
+	LCD_WriteData(0x01);
+	LCD_WriteData(0x2C);
+	LCD_WriteData(0x2D);
+
+	// Frame rate control - partial mode
+	LCD_WriteCommand(ST7735_FRMCTR3);
+	LCD_WriteData(0x01);
+	LCD_WriteData(0x2C);
+	LCD_WriteData(0x2D);
+	LCD_WriteData(0x01);
+	LCD_WriteData(0x2C);
+	LCD_WriteData(0x2D);
+
+	// Display inversion control
+	LCD_WriteCommand(ST7735_INVCTR);
+	LCD_WriteData(0x07);
+
+	// Power control
+	LCD_WriteCommand(ST7735_PWCTR1);
+	LCD_WriteData(0xA2);
+	LCD_WriteData(0x02);
+	LCD_WriteData(0x84);
+
+	LCD_WriteCommand(ST7735_PWCTR2);
+	LCD_WriteData(0xC5);
+
+	LCD_WriteCommand(ST7735_PWCTR3);
+	LCD_WriteData(0x0A);
+	LCD_WriteData(0x00);
+
+	LCD_WriteCommand(ST7735_PWCTR4);
+	LCD_WriteData(0x8A);
+	LCD_WriteData(0x2A);
+
+	LCD_WriteCommand(ST7735_PWCTR5);
+	LCD_WriteData(0x8A);
+	LCD_WriteData(0xEE);
+
+	// VCOM control
+	LCD_WriteCommand(ST7735_VMCTR1);
+	LCD_WriteData(0x0E);
+
+	// Display inversion off
+	//LCD_WriteCommand(ST7735_INVOFF);
+	LCD_WriteCommand(ST7735_INVON); // lcd 패널이 기본으로 색반전으로되어있음 공장에서출고할떄 그렇게만듬 - 반전된걸 반전시켜 정상으로만
+	// Memory access control (rotation)
+	LCD_WriteCommand(ST7735_MADCTL);
+    LCD_WriteData(0x68); // rgb 에서 brg로 변경
+	// 4. 90도 + Y축만 미러링
+	//LCD_WriteData(0xA0); // MY=1, MX=0, MV=1
+
+	// Color mode: 16-bit color
+	LCD_WriteCommand(ST7735_COLMOD);
+	LCD_WriteData(0x05);
+
+	// Column address set
+	LCD_WriteCommand(ST7735_CASET);
+	LCD_WriteData(0x00);
+	LCD_WriteData(0x00);
+	LCD_WriteData(0x00);
+	//LCD_WriteData(0x4F); // 79
+	LCD_WriteData(0x9F); // 159
+
+	// Row address set
+	LCD_WriteCommand(ST7735_RASET);
+	LCD_WriteData(0x00);
+	LCD_WriteData(0x00);
+	LCD_WriteData(0x00);
+	//LCD_WriteData(0x9F); // 159
+	// Row address set (80픽셀)
+	LCD_WriteData(0x4F); // 79
+
+	// Gamma correction
+	LCD_WriteCommand(ST7735_GMCTRP1);
+	LCD_WriteData(0x0f);
+	LCD_WriteData(0x1a);
+	LCD_WriteData(0x0f);
+	LCD_WriteData(0x18);
+	LCD_WriteData(0x2f);
+	LCD_WriteData(0x28);
+	LCD_WriteData(0x20);
+	LCD_WriteData(0x22);
+	LCD_WriteData(0x1f);
+	LCD_WriteData(0x1b);
+	LCD_WriteData(0x23);
+	LCD_WriteData(0x37);
+	LCD_WriteData(0x00);
+	LCD_WriteData(0x07);
+	LCD_WriteData(0x02);
+	LCD_WriteData(0x10);
+
+	LCD_WriteCommand(ST7735_GMCTRN1);
+	LCD_WriteData(0x0f);
+	LCD_WriteData(0x1b);
+	LCD_WriteData(0x0f);
+	LCD_WriteData(0x17);
+	LCD_WriteData(0x33);
+	LCD_WriteData(0x2c);
+	LCD_WriteData(0x29);
+	LCD_WriteData(0x2e);
+	LCD_WriteData(0x30);
+	LCD_WriteData(0x30);
+	LCD_WriteData(0x39);
+	LCD_WriteData(0x3f);
+	LCD_WriteData(0x00);
+	LCD_WriteData(0x07);
+	LCD_WriteData(0x03);
+	LCD_WriteData(0x10);
+
+	// Normal display on
+	LCD_WriteCommand(ST7735_NORON);
+	HAL_Delay(10);
+
+	// Main screen turn on
+	LCD_WriteCommand(ST7735_DISPON);
+	HAL_Delay(100);
+}
+
+void LCD_SetWindow(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1) {
+	// 0.96" ST7735S LCD 오프셋 적용
+	uint8_t x_offset = 0;  // X축 오프셋
+	uint8_t y_offset = 0;   // Y축 오프셋
+
+	// Column address set (X축)
+	LCD_WriteCommand(ST7735_CASET);
+	LCD_WriteData(0x00);
+	LCD_WriteData(x0 + x_offset);
+	LCD_WriteData(0x00);
+	LCD_WriteData(x1 + x_offset);
+
+	// Row address set (Y축)
+	LCD_WriteCommand(ST7735_RASET);
+	LCD_WriteData(0x00);
+	LCD_WriteData(y0 + y_offset);
+	LCD_WriteData(0x00);
+	LCD_WriteData(y1 + y_offset);
+
+	// Write to RAM
+	LCD_WriteCommand(ST7735_RAMWR);
+}
+
+void LCD_DrawPixel(uint8_t x, uint8_t y, uint16_t color) {
+	if (x >= LCD_WIDTH || y >= LCD_HEIGHT)
+		return;
+
+	LCD_SetWindow(x, y, x, y);
+	LCD_WriteData16(color);
+}
+
+void LCD_Fill(uint16_t color) {
+	LCD_SetWindow(0, 0, LCD_WIDTH - 1, LCD_HEIGHT - 1);
+
+	LCD_CS_LOW();
+	LCD_DC_HIGH();
+
+	for (uint16_t i = 0; i < LCD_WIDTH * LCD_HEIGHT; i++) {
+		uint8_t buffer[2];
+		buffer[0] = (color >> 8) & 0xFF;
+		buffer[1] = color & 0xFF;
+		HAL_SPI_Transmit(&hspi1, buffer, 2, HAL_MAX_DELAY);
+	}
+
+	LCD_CS_HIGH();
+}
+
+void LCD_DrawChar(uint8_t x, uint8_t y, char ch, uint16_t color,
+		uint16_t bg_color) {
+	if (ch < 32 || ch > 126)
+		ch = 32; // Replace invalid chars with space
+
+	const uint8_t *font_char = font8x8[ch - 32];
+
+	for (uint8_t i = 0; i < 8; i++) {
+		uint8_t line = font_char[i];
+		for (uint8_t j = 0; j < 8; j++) {
+			//if(line & (0x80 >> j)) {
+			if (line & (0x01 << j)) { // LSB부터 읽기
+				LCD_DrawPixel(x + j, y + i, color);
+			} else {
+				LCD_DrawPixel(x + j, y + i, bg_color);
+			}
+		}
+	}
+}
+
+void LCD_DrawString(uint8_t x, uint8_t y, const char *str, uint16_t color,
+		uint16_t bg_color) {
+	uint8_t orig_x = x;
+
+	while (*str) {
+		if (*str == '\n') {
+			y += 8;
+			x = orig_x;
+		} else if (*str == '\r') {
+			x = orig_x;
+		} else {
+			if (x + 8 > LCD_WIDTH) {
+				x = orig_x;
+				y += 8;
+			}
+			if (y + 8 > LCD_HEIGHT) {
+				break;
+			}
+
+			LCD_DrawChar(x, y, *str, color, bg_color);
+			x += 8;
+		}
+		str++;
+	}
+}
+
+//
+///**
+// * @brief  지정한 위치에 사각형을 채웁니다. (새로 추가해야 할 유틸리티 함수)
+// * @param  x: 시작 x 좌표
+// * @param  y: 시작 y 좌표
+// * @param  w: 너비
+// * @param  h: 높이
+// * @param  color: 채울 색상
+// */
+//void LCD_Fill_Rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint16_t color)
+//{
+//    if ((x >= LCD_WIDTH) || (y >= LCD_HEIGHT)) return;
+//    if ((x + w - 1) >= LCD_WIDTH) w = LCD_WIDTH - x;
+//    if ((y + h - 1) >= LCD_HEIGHT) h = LCD_HEIGHT - y;
+//
+//    LCD_SetWindow(x, y, x + w - 1, y + h - 1);
+//
+//    uint32_t num_pixels = (uint32_t)w * h;
+//    uint8_t hi = color >> 8, lo = color;
+//
+//    LCD_CS_LOW();
+//    LCD_DC_HIGH();
+//    for (uint32_t i = 0; i < num_pixels; i++) {
+//        HAL_SPI_Transmit(&hspi1, &hi, 1, HAL_MAX_DELAY);
+//        HAL_SPI_Transmit(&lo, 1, HAL_MAX_DELAY);
+//    }
+//    LCD_CS_HIGH();
+//}
+//
+//
+//
+///**
+// * @brief  지정한 크기로 문자 하나를 LCD에 그립니다.
+// * @param  x: 시작 x 좌표
+// * @param  y: 시작 y 좌표
+// * @param  ch: 그릴 문자
+// * @param  color: 글자색
+// * @param  bg_color: 배경색
+// * @param  size: 글자 크기 (1 = 8x8, 2 = 16x16, ...)
+// */
+//void LCD_DrawChar_Sized(uint8_t x, uint8_t y, char ch, uint16_t color, uint16_t bg_color, uint8_t size)
+//{
+//    if (ch < 32 || ch > 126) ch = 32; // 유효하지 않은 문자는 공백으로 처리
+//
+//    // size가 0이거나 너무 커서 화면을 벗어나는 경우를 방지
+//    if (size == 0 || x + 8 * size > LCD_WIDTH || y + 8 * size > LCD_HEIGHT) return;
+//
+//    // lcd.c 내에 있는 font8x8 배열을 사용합니다.
+//    extern const uint8_t font8x8[][8];
+//    const uint8_t *font_char = font8x8[ch - 32];
+//
+//    for (uint8_t i = 0; i < 8; i++) { // 폰트의 각 행 (row)
+//        uint8_t line = font_char[i];
+//        for (uint8_t j = 0; j < 8; j++) { // 각 행의 픽셀 (column)
+//            if (line & (0x01 << j)) { // LSB부터 픽셀 데이터를 읽음
+//                // 픽셀이 켜져있으면 글자색으로 size*size 크기의 사각형을 그림
+//                if (size == 1) {
+//                    LCD_DrawPixel(x + j, y + i, color);
+//                } else {
+//                    LCD_Fill_Rect(x + (j * size), y + (i * size), size, size, color);
+//                }
+//            } else {
+//                // 픽셀이 꺼져있으면 배경색으로 그림
+//                if (size == 1) {
+//                    LCD_DrawPixel(x + j, y + i, bg_color);
+//                } else {
+//                    LCD_Fill_Rect(x + (j * size), y + (i * size), size, size, bg_color);
+//                }
+//            }
+//        }
+//    }
+//}
+//
+///**
+// * @brief  지정한 크기로 문자열을 LCD에 그립니다.
+// * @param  x: 시작 x 좌표
+// * @param  y: 시작 y 좌표
+// * @param  str: 그릴 문자열
+// * @param  color: 글자색
+// * @param  bg_color: 배경색
+// * @param  size: 글자 크기 (1 = 8x8, 2 = 16x16, ...)
+// */
+//void LCD_DrawString_Sized(uint8_t x, uint8_t y, const char *str, uint16_t color, uint16_t bg_color, uint8_t size)
+//{
+//    uint8_t start_x = x;
+//    uint8_t font_width = 8 * size;
+//    uint8_t font_height = 8 * size;
+//
+//    while (*str) {
+//        if (*str == '\n') {
+//            y += font_height;
+//            x = start_x;
+//        } else {
+//            if (x + font_width > LCD_WIDTH) {
+//                x = start_x;
+//                y += font_height;
+//            }
+//            if (y + font_height > LCD_HEIGHT) break;
+//
+//            LCD_DrawChar_Sized(x, y, *str, color, bg_color, size);
+//            x += font_width;
+//        }
+//        str++;
+//    }
+//}
+

@@ -1,0 +1,9 @@
+../Core/Src/lcd.c:165:13:LCD_WriteCommand	16	static
+../Core/Src/lcd.c:172:13:LCD_WriteData	16	static
+../Core/Src/lcd.c:179:13:LCD_WriteData16	24	static
+../Core/Src/lcd.c:190:6:LCD_Init	8	static
+../Core/Src/lcd.c:331:6:LCD_SetWindow	32	static
+../Core/Src/lcd.c:354:6:LCD_DrawPixel	16	static
+../Core/Src/lcd.c:362:6:LCD_Fill	24	static
+../Core/Src/lcd.c:378:6:LCD_DrawChar	40	static
+../Core/Src/lcd.c:398:6:LCD_DrawString	40	static
