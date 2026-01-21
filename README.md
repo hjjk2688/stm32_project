@@ -1,4 +1,4 @@
-# 🚗 RTOS 기반 제스처 인식 RC카 컨트롤 시스템
+#  RTOS 기반 제스처 인식 RC카 컨트롤 시스템
 
 [![STM32](https://img.shields.io/badge/STM32-03234B?style=for-the-badge&logo=stmicroelectronics&logoColor=white)](https://www.st.com/en/microcontrollers-microprocessors/stm32-32-bit-arm-cortex-mcus.html)
 [![FreeRTOS](https://img.shields.io/badge/FreeRTOS-00979D?style=for-the-badge&logo=freertos&logoColor=white)](https://www.freertos.org/)
@@ -6,7 +6,7 @@
 
 IMU 센서를 이용한 제스처 제어와 초음파 센서 기반 장애물 감지 기능을 갖춘 양방향 블루투스 무선 RC카 시스템
 
-## 📋 목차
+##  목차
 
 - [프로젝트 소개](#-프로젝트-소개)
 - [주요 기능](#-주요-기능)
@@ -20,7 +20,7 @@ IMU 센서를 이용한 제스처 제어와 초음파 센서 기반 장애물 �
 - [향후 계획](#-향후-계획)
 - [연락처](#-연락처)
 
-## 🎯 프로젝트 소개
+##  프로젝트 소개
 
 본 프로젝트는 두 개의 STM32 보드를 Master-Slave 구조로 연결하여, IMU 센서 기반의 직관적인 제스처 컨트롤과 실시간 장애물 감지 기능을 구현한 임베디드 시스템입니다.
 
@@ -29,14 +29,14 @@ IMU 센서를 이용한 제스처 제어와 초음파 센서 기반 장애물 �
 
 ### 핵심 특징
 
-- ✨ **직관적인 제스처 제어**: MPU6050 IMU 센서를 활용한 손목 기울기 기반 RC카 조종
-- 🔄 **양방향 무선 통신**: 블루투스 기반 커스텀 패킷 프로토콜로 안정적인 제어 및 상태 전송
-- 🚨 **실시간 장애물 감지**: 전/후방 초음파 센서로 장애물 거리 측정 및 경고
-- 📊 **시각적 피드백**: LCD 디스플레이를 통한 실시간 거리 정보 표시
-- ⚡ **멀티태스킹**: FreeRTOS를 활용한 안정적인 동시 처리
-- 🛡️ **안전 기능**: 긴급 정지 버튼 및 안전 재개 메커니즘
+-  **직관적인 제스처 제어**: MPU6050 IMU 센서를 활용한 손목 기울기 기반 RC카 조종
+-  **양방향 무선 통신**: 블루투스 기반 커스텀 패킷 프로토콜로 안정적인 제어 및 상태 전송
+-  **실시간 장애물 감지**: 전/후방 초음파 센서로 장애물 거리 측정 및 경고
+-  **시각적 피드백**: LCD 디스플레이를 통한 실시간 거리 정보 표시
+-  **멀티태스킹**: FreeRTOS를 활용한 안정적인 동시 처리
+-  **안전 기능**: 긴급 정지 버튼 및 안전 재개 메커니즘
 
-## ✨ 주요 기능
+##  주요 기능
 
 ### Controller (Master)
 - **IMU 제스처 인식**: Roll/Pitch 각도 계산 및 제어 신호 생성
@@ -55,7 +55,7 @@ IMU 센서를 이용한 제스처 제어와 초음파 센서 기반 장애물 �
   - Multi Task (Normal Priority)
   - Ultrasonic Task (Low Priority)
 
-## 🏗️ 시스템 아키텍처
+##  시스템 아키텍처
 
 ### 전체 구조
 ```
@@ -91,7 +91,7 @@ IMU 센서를 이용한 제스처 제어와 초음파 센서 기반 장애물 �
 | **단점** | 기능이 복잡해지면 코드 관리 어려움 | 초기 설정이 복잡하고 약간의 오버헤드 발생 |
 | **선택 이유** | IMU 값 계산 및 송수신이라는 명확한 단일 목표 | 모터, 센서, 통신 등 여러 장치의 동시 독립 구동 필요 |
 
-## 🔧 하드웨어 구성
+##  하드웨어 구성
 
 ### MCU Boards
 - **Controller**: NUCLEO-L412KB
@@ -115,7 +115,7 @@ IMU 센서를 이용한 제스처 제어와 초음파 센서 기반 장애물 �
 - SPI: LCD 디스플레이 제어
 - PWM: 모터 및 부저 제어
 
-## 💻 소프트웨어 설계
+##  소프트웨어 설계
 
 ### Controller 구현
 
@@ -163,7 +163,7 @@ xQueueSend(motorQueue, &command, portMAX_DELAY);
 xQueueReceive(motorQueue, &received_cmd, portMAX_DELAY);
 ```
 
-## 📡 통신 프로토콜
+##  통신 프로토콜
 
 ### 6-Byte 거리 데이터 패킷 (Vehicle → Controller)
 ```
@@ -196,37 +196,13 @@ xQueueReceive(motorQueue, &received_cmd, portMAX_DELAY);
 - 최소 크기(1-Byte)로 응답 속도 최대화
 - 파싱 없이 즉시 실행 가능한 직관적 설계
 
-## 🚀 시작하기
+##  시작하기
 
 ### 필수 요구사항
 - STM32CubeIDE
 - STM32CubeMX
 - ST-Link Driver
 - Git
-
-### 설치 및 빌드
-
-1. **저장소 클론**
-```bash
-git clone https://github.com/hjjk2688/stm32_project.git
-cd stm32_project
-```
-
-2. **Controller 프로젝트 빌드**
-```bash
-cd master_L412KB
-# STM32CubeIDE에서 프로젝트 임포트
-# Build Project (Ctrl+B)
-# Flash to NUCLEO-L412KB
-```
-
-3. **Vehicle 프로젝트 빌드**
-```bash
-cd ../rc_car_slave
-# STM32CubeIDE에서 프로젝트 임포트
-# Build Project (Ctrl+B)
-# Flash to NUCLEO-F103RB
-```
 
 ### 하드웨어 연결
 
@@ -250,7 +226,7 @@ cd ../rc_car_slave
 3. 자동 페어링 대기 (약 5초)
 4. 페어링 성공 시 LED 점등
 
-## 🔍 문제 해결 과정
+##  문제 해결 과정
 
 ### 1. 급격한 제스처 시 측정 오류
 
@@ -297,7 +273,7 @@ cd ../rc_car_slave
 - Task별 Stack Size 최적화
 - 결과: 안정적인 동작
 
-## 📸 시연 결과
+## 시연 결과
 
 ### 주요 기능 시연
 
@@ -316,7 +292,7 @@ cd ../rc_car_slave
 - **블루투스 전송 속도**: 9600 bps
 - **안정적인 제어 거리**: 최대 10m
 
-## 🎓 개발 후기
+##  개발 후기
 
 ### 주요 성과
 
@@ -332,7 +308,7 @@ cd ../rc_car_slave
 - **메모리 최적화**: RTOS Heap 및 Stack 관리 기법
 - **통신 안정성**: 패킷 검증 및 에러 핸들링
 
-## 🔮 향후 계획
+##  향후 계획
 
 ### Hardware 개선
 - **9축 IMU 도입**: 지자기 센서 추가로 Yaw 드리프트 보정
@@ -359,8 +335,3 @@ cd ../rc_car_slave
 
 ---
 
-<div align="center">
-
-**⭐ 이 프로젝트가 도움이 되었다면 Star를 눌러주세요! ⭐**
-
-</div>
