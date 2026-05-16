@@ -202,7 +202,6 @@ xQueueReceive(motorQueue, &received_cmd, portMAX_DELAY);
 - STM32CubeIDE
 - STM32CubeMX
 - ST-Link Driver
-- Git
 
 ### 하드웨어 연결
 
